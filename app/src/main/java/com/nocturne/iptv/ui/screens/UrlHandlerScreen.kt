@@ -93,8 +93,7 @@ fun UrlHandlerScreen(onBack: () -> Unit) {
                     onClick = { openExternal(context, url.trim()) },
                     enabled = url.isNotBlank(),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = NocturnePalette.Bone),
-                    modifier = Modifier.weight(1f),
-                    border = BorderStroke(1.dp, NocturnePalette.Coffin)
+                    modifier = Modifier.weight(1f)
                 ) {
                     Text("Open externally", color = NocturnePalette.Ash)
                 }
