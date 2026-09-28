@@ -1,5 +1,6 @@
 import androidx.compose.material3.BorderStroke
 package com.nocturne.iptv.ui.screens
+package com.nocturne.iptv.ui.screens
 
 import android.content.Intent
 import android.net.Uri
@@ -7,7 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
-import androidx.compose.material3.BorderStroke  // Add this line
+import androidx.compose.material3.BorderStroke
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.graphics.Color
@@ -26,6 +27,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UrlHandlerScreen(onBack: () -> Unit) {
+    // ... rest of the file
     val context = LocalContext.current
     var url by remember { mutableStateOf("") }
 
