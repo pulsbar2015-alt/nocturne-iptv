@@ -1,6 +1,5 @@
 import androidx.compose.material3.BorderStroke
 package com.nocturne.iptv.ui.screens
-package com.nocturne.iptv.ui.screens
 
 import android.content.Intent
 import android.net.Uri
