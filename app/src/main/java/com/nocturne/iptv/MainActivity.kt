@@ -28,6 +28,7 @@ import com.nocturne.iptv.ui.screens.AddPlaylistScreen
 import com.nocturne.iptv.ui.screens.HomeScreen
 import com.nocturne.iptv.ui.screens.IntroScreen
 import com.nocturne.iptv.ui.screens.SettingsScreen
+import com.nocturne.iptv.ui.screens.UrlHandlerScreen
 import com.nocturne.iptv.ui.theme.NocturnePalette
 import com.nocturne.iptv.ui.theme.NocturneTheme
 
@@ -78,7 +79,8 @@ private fun NocturneRoot() {
                     onToggleFavorite = { viewModel.toggleFavorite(it) },
                     onAddPlaylist = { navController.navigate("add") },
                     onOpenGuide = { navController.navigate("settings") },
-                    onOpenSettings = { navController.navigate("settings") }
+                    onOpenSettings = { navController.navigate("settings") },
+                    onUrl = { navController.navigate("url") }
                 )
             }
 
@@ -116,6 +118,10 @@ private fun NocturneRoot() {
                         }
                     }
                 )
+            }
+
+            composable("url") {
+                UrlHandlerScreen(onBack = { navController.popBackStack() })
             }
         }
 

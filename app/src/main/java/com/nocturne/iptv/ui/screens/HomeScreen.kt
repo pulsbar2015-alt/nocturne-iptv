@@ -1,45 +1,61 @@
 package com.nocturne.iptv.ui.screens
 
-import android.content.Intent
-import android.net.Uri
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import androidx.activity.OnBackPressedCallback
-import androidx.appcompat.app.AlertDialog
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.FadeIn
-import androidx.compose.animation.core.FadeOut
-import androidx.compose.foundation.Background
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Http
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.outlined.Tv
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.intPx
-import androidx.compose.material3.icons.Icons
-import androidx.compose.material3.icons.filled.Add
-import androidx.compose.material3.icons.filled.Menu
-import androidx.compose.material3.icons.outlined.Close
+import com.nocturne.iptv.data.AppState
 import com.nocturne.iptv.data.Channel
 import com.nocturne.iptv.data.EpgLookup
-import com.nocturne.iptv.data.AppState
-import com.nocturne.iptv.data.Models
 import com.nocturne.iptv.ui.components.ChannelRow
+import com.nocturne.iptv.ui.components.EmptyState
+import com.nocturne.iptv.ui.components.GlitchText
+import com.nocturne.iptv.ui.components.GroupChip
 import com.nocturne.iptv.ui.theme.NocturnePalette
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.isActive
 
-/* -------------------------------------------------
-   1️⃣  Core state that the screen already uses
-   ------------------------------------------------- */
 private enum class HomeTab(val label: String) { ALL("Channels"), VAULT("Vault"), RECENT("Recent"), GUIDE("Guide") }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -50,19 +66,16 @@ fun HomeScreen(
     onToggleFavorite: (Channel) -> Unit,
     onAddPlaylist: () -> Unit,
     onOpenGuide: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    onUrl: () -> Unit
 ) {
-    /* ---- existing vars --------------------------------------------------- */
     var tab by remember { mutableIntStateOf(0) }
     var query by remember { mutableStateOf("") }
     var group by remember { mutableStateOf<String?>(null) }
+
     val favorites = state.favorites
     val byId = remember(state.channels) { state.channels.associateBy { it.id } }
-    var urlDialog by remember { mutableStateOf(false) }
-    var inputUrl by remember { mutableStateOf("") }
-    var selectedChannel by remember { mutableStateOf<Channel?>(null) }
 
-    /* ---- filtered channel list (unchanged) ------------------------------- */
     val filtered: List<Channel> = remember(state.channels, tab, group, query, favorites, state.recents) {
         val base = when (HomeTab.entries[tab]) {
             HomeTab.ALL -> state.channels
@@ -75,276 +88,258 @@ fun HomeScreen(
         else byGroup.filter { it.name.contains(query, ignoreCase = true) || it.group.contains(query, ignoreCase = true) }
     }
 
-    /* -------------------------------------------------
-       2️⃣  URL‑handler dialog
-       ------------------------------------------------- */
-    // "URL" FAB – opens the dialog
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        FloatingActionButton(
-            onClick = { urlDialog = true },
-            icon = { Icon(Icons.Outlined.Link, contentDescription = "URL") },
-            label = { Text("URL") },
-            colors = FabDefaults.colors(
-                containerColor = NocturnePalette.Blood,
-                pressedIndicatorColor = NocturnePalette.Ember
-            )
-        )
-    }
-
-    // Dialog that asks for a URL and offers two actions
-    if (urlDialog) {
-        val builder = AlertDialog.Builder(LocalContext.current)
-        var urlInDialog = inputUrl
-
-        builder.setTitle("Paste a stream URL")
-        builder.setView(
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(12.dp),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                OutlinedTextField(
-                    value = urlInDialog,
-                    onValueChange = { urlInDialog = it },
-                    placeholder = { Text("e.g. https://…/m3u8 or rtmp://…") },
-                    modifier = Modifier.fillMaxWidth(0.8f),
-                    singleLine = true,
-                    shape = RoundedCornerShape(8.dp)
-                )
-                Spacer(Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Button(
-                        onClick = {
-                            urlDialog = false
-                            // play inside the app (HLS/DASH/MP4)
-                            val u = uriParser(urlInDialog)
-                            if (u != null) {
-                                playInside(u)
-                            } else {
-                                // fall‑back to external player
-                                openExternal(urlInDialog)
-                            }
-                        },
-                        text = "Play inside"
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Button(
-                        onClick = {
-                            urlDialog = false
-                            openExternal(urlInDialog)
-                        },
-                        text = "Open in player"
-                    )
-                }
-            }
-        )
-        builder.show()
-    }
-
-    /* -------------------------------------------------
-       3️⃣  Scheme parser – returns a Uri if the scheme
-            we support, otherwise null.
-       ------------------------------------------------- */
-    private fun uriParser(url: String): Uri? {
-        try {
-            val u = Uri.parse(url)
-            // support HLS, DASH, progressive MP4, MP3, TS, etc.
-            when (u.scheme) {
-                "m3u8", "hls", "mpd", "mp4", "m4v", "mp3", "wav", "ogg", "flac", "webm", "ts" -> return u
-                else -> return null // let the external‑player branch handle it
-            }
-        } catch (e: Exception) {
-            return null
-        }
-    }
-
-    /* -------------------------------------------------
-       4️⃣  Play inside the app (ExoPlayer).  This re‑uses the
-           existing “play” logic from MainActivity.
-       ------------------------------------------------- */
-    private fun playInside(url: Uri) {
-        // Navigate to the existing PlayerActivity – you can also
-        // reuse the PlayerScreen composable if you prefer.
-        val ctx = LocalContext.current
-        ctx.startActivity(Intent(ctx, PlayerActivity::class.java).apply {
-            putExtra("EXTRA_STREAM_URL", url.toString())
-        })
-    }
-
-    /* -------------------------------------------------
-       5️⃣  Open in an external player (VLC / MX Player /
-           generic “view‑in‑browser”).
-       ------------------------------------------------- */
-    private fun openExternal(url: String) {
-        val u = Uri.parse(url)
-        val scheme = u.scheme
-
-        when (scheme) {
-            "rtmp" -> {
-                // Try VLC first, then MX Player, then a generic intent
-                val vlc = Intent(Intent.ACTION_VIEW)
-                    .setDataAndType(u, "application/x-rtmp")
-                    .setPackage("org.videolan.vlc")
-                val mx = Intent(Intent.ACTION_VIEW)
-                    .setDataAndType(u, "application/x-rtmp")
-                    .setPackage("com.mxplayer.player")
-                try { LocalContext.current.startActivity(vlc) }
-                catch (_: android.content.ActivityNotFoundException) {
-                    try { LocalContext.current.startActivity(mx) }
-                    catch (_) {
-                        // final fallback – let the system decide
-                        val intent = new Intent(Intent.ACTION_VIEW).setData(u)
-                        LocalContext.current.startActivity(intent)
-                    }
-                }
-            }
-            "tvbus", "mitv", "p8p", "vjms" -> {
-                // These are custom schemes – just launch a generic intent
-                val intent = new Intent(Intent.ACTION_VIEW).setData(u)
-                try { LocalContext.current.startActivity(intent) }
-                catch (_: android.content.ActivityNotFoundException) {
-                    Toast.Local(context = LocalContext.current, text = "Cannot handle this stream", duration = Toast.LENGTH_SHORT).show()
-                }
-            }
-            else -> {
-                // Anything else (e.g. http, https) – hand off to the system
-                val intent = new Intent(Intent.ACTION_VIEW).setData(u)
-                try { LocalContext.current.startActivity(intent) }
-                catch (_: android.content.ActivityNotFoundException) {
-                    Toast.Local(context = LocalContext.current, text = "No app to open this URL", duration = Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
-    }
-
-    /* -------------------------------------------------
-       6️⃣  Split‑screen layout
-       ------------------------------------------------- */
-    // The whole screen is now a Row: left = channel list, right = preview.
     Scaffold(
-        drawerColumn = { /* we keep the default drawer closed – the FAB does the job */ },
-        bottomBar = {
-            BottomAppBar(
-                leadingIcon = {
-                    IconButton(onClick = { navController.navigate("home") }) {
-                        Icon(Icons.Navigation.Menu, contentDescription = "Menu")
-                    }
+        containerColor = NocturnePalette.Abyss,
+        topBar = {
+            TopAppBar(
+                title = {
+                    GlitchText(
+                        text = "NOCTURNE",
+                        style = MaterialTheme.typography.headlineMedium,
+                        glitchEveryMs = 4_000L..9_000L
+                    )
                 },
                 actions = {
-                    // The URL‑FAB is placed inside the main Column above;
-                    // we keep the BottomAppBar minimal.
+                    IconButton(onClick = onOpenGuide) {
+                        Icon(Icons.Outlined.CalendarMonth, contentDescription = "Guide", tint = NocturnePalette.Ember)
+                    }
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Outlined.Settings, contentDescription = "Settings", tint = NocturnePalette.Ash)
+                    }
                 },
-                backgroundColor = NocturnePalette.Abyss,
-                contentColor = NocturnePalette.Bone
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = NocturnePalette.Crypt,
+                    titleContentColor = NocturnePalette.Bone
+                )
             )
+        },
+        floatingActionButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ExtendedFloatingActionButton(
+                    onClick = onAddPlaylist,
+                    containerColor = NocturnePalette.Blood,
+                    contentColor = NocturnePalette.Bone,
+                    icon = { Icon(Icons.Filled.Add, contentDescription = null) },
+                    text = { Text("SOURCE", style = MaterialTheme.typography.labelLarge) }
+                )
+                ExtendedFloatingActionButton(
+                    onClick = onUrl,
+                    containerColor = NocturnePalette.Coffin,
+                    contentColor = NocturnePalette.Bone,
+                    icon = { Icon(Icons.Filled.Http, contentDescription = null) },
+                    text = { Text("URL", style = MaterialTheme.typography.labelLarge) }
+                )
+            }
         }
     ) { padding ->
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                // left channel list takes ~30 %
-                .weight(1f, fill = false) // will be sized by the weight modifier inside
+                .background(NocturnePalette.Abyss)
         ) {
-            /* ---------- LEFT: channel list ---------- */
-            Box(
+            if (state.channels.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    if (state.loading) {
+                        CircularProgressIndicator(color = NocturnePalette.Blood)
+                    } else {
+                        EmptyState(
+                            title = "The vault is empty",
+                            message = "Feed it a playlist. Paste an M3U URL, load a file, or drop raw text — we handle m3u8, ts and friends.",
+                            action = {
+                                ExtendedFloatingActionButton(
+                                    onClick = onAddPlaylist,
+                                    containerColor = NocturnePalette.Blood,
+                                    contentColor = NocturnePalette.Bone,
+                                    icon = { Icon(Icons.Filled.Add, contentDescription = null) },
+                                    text = { Text("Add source") }
+                                )
+                            }
+                        )
+                    }
+                }
+                return@Column
+            }
+
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
                 modifier = Modifier
-                    .weight(0.3f)          // 30 % of the width
-                    .background(NocturnePalette.Crypt)
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                placeholder = { Text("Search the dark…", color = NocturnePalette.Ash) },
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = NocturnePalette.Ash) },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp)
+            )
+
+            TabRow(
+                selectedTabIndex = tab,
+                containerColor = NocturnePalette.Crypt,
+                contentColor = NocturnePalette.Bone,
+                divider = {}
             ) {
+                HomeTab.entries.forEachIndexed { i, entry ->
+                    Tab(
+                        selected = tab == i,
+                        onClick = { tab = i; if (i != 0) group = null },
+                        text = {
+                            Text(
+                                entry.label,
+                                color = if (tab == i) NocturnePalette.Ember else NocturnePalette.Ash,
+                                style = MaterialTheme.typography.labelLarge
+                            )
+                        },
+                        icon = {
+                            val icon = when (entry) {
+                                HomeTab.ALL -> Icons.Outlined.Tv
+                                HomeTab.VAULT -> Icons.Filled.StarBorder
+                                HomeTab.RECENT -> Icons.Outlined.History
+                                HomeTab.GUIDE -> Icons.Outlined.CalendarMonth
+                            }
+                            Icon(icon, contentDescription = null, tint = if (tab == i) NocturnePalette.Ember else NocturnePalette.Ash)
+                        }
+                    )
+                }
+            }
+
+            if (HomeTab.entries[tab] == HomeTab.GUIDE) {
+                GuideTab(
+                    state = state,
+                    onPlay = onPlay,
+                    onOpenGuide = onOpenGuide
+                )
+                return@Column
+            }
+
+            if (tab == 0 && state.groups.isNotEmpty()) {
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp)
+                ) {
+                    item {
+                        GroupChip(
+                            label = "All",
+                            selected = group == null,
+                            onClick = { group = null }
+                        )
+                    }
+                    items(state.groups) { g ->
+                        GroupChip(label = g, selected = group == g, onClick = { group = if (group == g) null else g })
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "${filtered.size} signals",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = NocturnePalette.Ash
+                )
+                Spacer(Modifier.weight(1f))
+                if (state.playlists.isNotEmpty()) {
+                    Text(
+                        text = "${state.playlists.size} source(s)",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = NocturnePalette.Ash
+                    )
+                }
+            }
+
+            if (filtered.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+                    EmptyState(
+                        title = when (HomeTab.entries[tab]) {
+                            HomeTab.VAULT -> "Nothing buried here yet"
+                            HomeTab.RECENT -> "No restless spirits watched"
+                            else -> "No matches"
+                        },
+                        message = when (HomeTab.entries[tab]) {
+                            HomeTab.VAULT -> "Tap the star on any channel to keep it in the vault."
+                            HomeTab.RECENT -> "Channels you watch will haunt this list."
+                            else -> "Try a different name or group."
+                        }
+                    )
+                }
+            } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(filtered, key = { it.id }) { channel ->
                         ChannelRow(
                             channel = channel,
                             isFavorite = favorites.contains(channel.id),
                             currentProgram = EpgLookup.current(state.epg, channel),
-                            onClick = {
-                                selectedChannel = channel
-                                // The right‑hand preview will automatically update
-                            }
+                            onClick = { onPlay(channel) },
+                            onToggleFavorite = { onToggleFavorite(channel) }
                         )
                     }
                 }
             }
-
-            /* ---------- RIGHT: preview area ---------- */
-            Box(
-                modifier = Modifier
-                    .weight(0.7f)          // 70 % of the width
-                    .background(NocturnePalette.Abyss)
-            ) {
-                if (selectedChannel != null) {
-                    // Small‑size player preview – we reuse the same ExoPlayer
-                    // logic that PlayerActivity uses, but keep it tiny.
-                    PlayerPreview(channel = selectedChannel)
-                } else {
-                    Text(
-                        text = "Select a channel to preview",
-                        color = NocturnePalette.Ash,
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.align(Alignment.Center)
-                    )
-                }
-            }
         }
-    } // end Scaffold
+    }
 }
 
-/* -------------------------------------------------
-   7️⃣  Tiny composable that shows a mini‑player
-   ------------------------------------------------- */
 @Composable
-private fun PlayerPreview(channel: Channel) {
-    // We simply show the channel name + logo and a “Play” button.
-    // If you want a real tiny ExoPlayer window you can embed an AndroidView
-    // that references the same data source PlayerActivity uses.
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-            .background(NocturnePalette.Crypt, shape = RoundedCornerShape(12.dp)),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
+private fun GuideTab(
+    state: AppState,
+    onPlay: (Channel) -> Unit,
+    onOpenGuide: () -> Unit
+) {
+    val live = remember(state.channels, state.epg) {
+        state.channels.filter { EpgLookup.current(state.epg, it) != null }
+    }
+
+    if (state.epg.isEmpty()) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+            EmptyState(
+                title = "No guide in the walls",
+                message = "Load an XMLTV guide to see what's playing right now.",
+                action = {
+                    ExtendedFloatingActionButton(
+                        onClick = onOpenGuide,
+                        containerColor = NocturnePalette.Blood,
+                        contentColor = NocturnePalette.Bone,
+                        icon = { Icon(Icons.Outlined.CalendarMonth, contentDescription = null) },
+                        text = { Text("Load guide") }
+                    )
+                }
+            )
+        }
+        return
+    }
+
+    if (live.isEmpty()) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+            EmptyState(
+                title = "Silence",
+                message = "No programmes are airing right now for this guide."
+            )
+        }
+        return
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // Logo (fallback placeholder)
-        val logo = channel.logo ?: "📺"
-        Text(
-            text = logo,
-            style = MaterialTheme.typography.displayLarge,
-            color = NocturnePalette.Ember,
-            modifier = Modifier.size(72.dp)
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text = channel.name,
-            style = MaterialTheme.typography.headlineMedium,
-            color = NocturnePalette.Bone,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Spacer(Modifier.height(12.dp))
-        Button(
-            onClick = {
-                // jump to full‑screen player (same as tapping a channel in the old list)
-                onPlay(channel)
-            },
-            style = MaterialTheme.buttonStyle,
-            backgroundColor = NocturnePalette.Blood,
-            textColor = NocturnePalette.Bone
-        ) {
-            Text("Watch live")
+        items(live, key = { it.id }) { channel ->
+            ChannelRow(
+                channel = channel,
+                isFavorite = state.favorites.contains(channel.id),
+                currentProgram = EpgLookup.current(state.epg, channel),
+                onClick = { onPlay(channel) },
+                onToggleFavorite = {}
+            )
         }
     }
 }
