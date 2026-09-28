@@ -50,6 +50,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -81,6 +82,7 @@ import com.nocturne.iptv.ui.components.rememberFlicker
 import com.nocturne.iptv.ui.theme.NocturnePalette
 import com.nocturne.iptv.ui.theme.NocturneTheme
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.random.Random
 
 /**
@@ -140,6 +142,7 @@ private fun PlayerScreen(player: ExoPlayer, session: PlaybackSession) {
     val context = LocalContext.current
     val app = context.applicationContext as NocturneApp
     val state by app.repository.state.collectAsState()
+    val scope = rememberCoroutineScope()
 
     var channel by remember { mutableStateOf(session.current) }
     var showControls by remember { mutableStateOf(true) }
@@ -163,7 +166,7 @@ private fun PlayerScreen(player: ExoPlayer, session: PlaybackSession) {
         player.setMediaItem(MediaItem.fromUri(Uri.parse(target.url)))
         player.prepare()
         player.play()
-        app.repository.markWatched(target)
+        app.repository.markWatched(target.id)
     }
 
     androidx.compose.runtime.DisposableEffect(player) {
@@ -252,7 +255,7 @@ private fun PlayerScreen(player: ExoPlayer, session: PlaybackSession) {
                 onBack = { (context as? PlayerActivity)?.finish() },
                 onUp = { zap(-1) },
                 onDown = { zap(1) },
-                onToggleFavorite = { channel?.let { app.repository.toggleFavorite(it.id) } }
+                onToggleFavorite = { channel?.let { ch -> scope.launch { app.repository.toggleFavorite(ch.id) } } }
             )
         }
     }
