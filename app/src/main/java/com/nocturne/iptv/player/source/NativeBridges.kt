@@ -6,6 +6,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.TransferListener
 import com.nocturne.iptv.data.NetworkClient
 import java.io.IOException
 
@@ -65,10 +66,12 @@ class ProxyRewriteBridge(
 
     private inner class RewrittenDataSource : DataSource {
         private var inner: DataSource? = null
+        private val listeners = ArrayList<TransferListener>()
 
         override fun open(dataSpec: DataSpec): Long {
             val rewritten = dataSpec.buildUpon().setUri(rewrite(dataSpec.uri)).build()
             val source = factory.createDataSource().also { inner = it }
+            listeners.forEach { source.addTransferListener(it) }
             return source.open(rewritten)
         }
 
@@ -77,6 +80,12 @@ class ProxyRewriteBridge(
                 .read(buffer, offset, length)
 
         override fun getUri(): Uri? = inner?.uri
+
+        override fun addTransferListener(transferListener: TransferListener) {
+            if (listeners.contains(transferListener)) return
+            listeners.add(transferListener)
+            inner?.addTransferListener(transferListener)
+        }
 
         override fun close() {
             inner?.close()
@@ -104,10 +113,13 @@ class MissingSdkBridge(
             )
         }
 
+        // Unreachable — open() always throws — but kept contract-safe.
         override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
-            C.ERROR_END_OF_INPUT
+            C.RESULT_END_OF_INPUT
 
         override fun getUri(): Uri? = null
+
+        override fun addTransferListener(transferListener: TransferListener) = Unit
 
         override fun close() = Unit
     }

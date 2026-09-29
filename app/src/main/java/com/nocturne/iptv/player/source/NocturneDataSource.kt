@@ -7,6 +7,7 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.TransferListener
 import androidx.media3.datasource.rtmp.RtmpDataSource
 import com.nocturne.iptv.data.NetworkClient
 
@@ -56,6 +57,7 @@ private class NocturneDataSource(
 ) : DataSource {
 
     private var delegate: DataSource? = null
+    private val listeners = ArrayList<TransferListener>()
 
     override fun open(dataSpec: DataSpec): Long {
         val scheme = dataSpec.uri.scheme?.lowercase().orEmpty()
@@ -65,6 +67,7 @@ private class NocturneDataSource(
             else -> default
         }
         delegate = selected
+        listeners.forEach { selected.addTransferListener(it) }
         return selected.open(dataSpec)
     }
 
@@ -73,6 +76,12 @@ private class NocturneDataSource(
             .read(buffer, offset, length)
 
     override fun getUri(): Uri? = delegate?.uri
+
+    override fun addTransferListener(transferListener: TransferListener) {
+        if (listeners.contains(transferListener)) return
+        listeners.add(transferListener)
+        delegate?.addTransferListener(transferListener)
+    }
 
     override fun close() {
         delegate?.close()
