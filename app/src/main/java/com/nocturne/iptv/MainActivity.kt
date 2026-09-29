@@ -78,6 +78,7 @@ private fun NocturneRoot() {
                     onPlay = { play(it) },
                     onToggleFavorite = { viewModel.toggleFavorite(it) },
                     onAddPlaylist = { navController.navigate("add") },
+                    onLoadDefault = { viewModel.importDefault() },
                     onOpenGuide = { navController.navigate("settings") },
                     onOpenSettings = { navController.navigate("settings") },
                     onUrl = { navController.navigate("url") }

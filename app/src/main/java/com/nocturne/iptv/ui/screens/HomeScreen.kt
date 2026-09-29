@@ -39,6 +39,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,6 +55,7 @@ import com.nocturne.iptv.ui.components.ChannelRow
 import com.nocturne.iptv.ui.components.EmptyState
 import com.nocturne.iptv.ui.components.GlitchText
 import com.nocturne.iptv.ui.components.GroupChip
+import com.nocturne.iptv.ui.components.PreviewBar
 import com.nocturne.iptv.ui.theme.NocturnePalette
 
 private enum class HomeTab(val label: String) { ALL("Channels"), VAULT("Vault"), RECENT("Recent"), GUIDE("Guide") }
@@ -65,6 +67,7 @@ fun HomeScreen(
     onPlay: (Channel) -> Unit,
     onToggleFavorite: (Channel) -> Unit,
     onAddPlaylist: () -> Unit,
+    onLoadDefault: () -> Unit,
     onOpenGuide: () -> Unit,
     onOpenSettings: () -> Unit,
     onUrl: () -> Unit
@@ -75,6 +78,11 @@ fun HomeScreen(
 
     val favorites = state.favorites
     val byId = remember(state.channels) { state.channels.associateBy { it.id } }
+
+    // The spirit monitor: last watched channel, else the first signal on the list.
+    val previewChannel = remember(state.channels, state.recents) {
+        state.recents.mapNotNull { byId[it] }.firstOrNull() ?: state.channels.firstOrNull()
+    }
 
     val filtered: List<Channel> = remember(state.channels, tab, group, query, favorites, state.recents) {
         val base = when (HomeTab.entries[tab]) {
@@ -147,13 +155,25 @@ fun HomeScreen(
                             title = "The vault is empty",
                             message = "Feed it a playlist. Paste an M3U URL, load a file, or drop raw text — we handle m3u8, ts and friends.",
                             action = {
-                                ExtendedFloatingActionButton(
-                                    onClick = onAddPlaylist,
-                                    containerColor = NocturnePalette.Blood,
-                                    contentColor = NocturnePalette.Bone,
-                                    icon = { Icon(Icons.Filled.Add, contentDescription = null) },
-                                    text = { Text("Add source") }
-                                )
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    ExtendedFloatingActionButton(
+                                        onClick = onAddPlaylist,
+                                        containerColor = NocturnePalette.Blood,
+                                        contentColor = NocturnePalette.Bone,
+                                        icon = { Icon(Icons.Filled.Add, contentDescription = null) },
+                                        text = { Text("Add source") }
+                                    )
+                                    ExtendedFloatingActionButton(
+                                        onClick = onLoadDefault,
+                                        containerColor = NocturnePalette.Coffin,
+                                        contentColor = NocturnePalette.Bone,
+                                        icon = { Icon(Icons.Outlined.Tv, contentDescription = null) },
+                                        text = { Text("Load default channels") }
+                                    )
+                                }
                             }
                         )
                     }
@@ -273,6 +293,20 @@ fun HomeScreen(
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    if (tab == 0) {
+                        previewChannel?.let { preview ->
+                            item(key = "preview") {
+                                key(preview.id) {
+                                    PreviewBar(
+                                        channel = preview,
+                                        isFavorite = favorites.contains(preview.id),
+                                        onOpenFullscreen = { onPlay(preview) },
+                                        onToggleFavorite = { onToggleFavorite(preview) }
+                                    )
+                                }
+                            }
+                        }
+                    }
                     items(filtered, key = { it.id }) { channel ->
                         ChannelRow(
                             channel = channel,

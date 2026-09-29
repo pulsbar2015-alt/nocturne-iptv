@@ -1,7 +1,6 @@
 package com.nocturne.iptv.player
 
 import android.graphics.Color as AndroidColor
-import android.net.Uri
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -47,6 +46,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -65,18 +65,18 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.DataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import com.nocturne.iptv.NocturneApp
 import com.nocturne.iptv.data.Channel
 import com.nocturne.iptv.data.EpgLookup
-import com.nocturne.iptv.data.NetworkClient
+import com.nocturne.iptv.player.source.NocturneDataSourceFactory
+import com.nocturne.iptv.player.source.Transports
 import com.nocturne.iptv.ui.components.HorrorOverlay
 import com.nocturne.iptv.ui.components.rememberFlicker
 import com.nocturne.iptv.ui.theme.NocturnePalette
@@ -112,12 +112,10 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private fun buildPlayer(): ExoPlayer {
-        val dataSourceFactory = DefaultHttpDataSource.Factory()
-            .setUserAgent(NetworkClient.USER_AGENT)
-            .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(20_000)
-            .setReadTimeoutMs(30_000)
-
+        // One routing factory for every transport: HLS/DASH/TS/MP4 stay on
+        // stock ExoPlayer, rtmp goes to the RTMP extension, and exotic
+        // schemes (tvbus/mitv/p8p/vjms) go to their registered bridges.
+        val dataSourceFactory: DataSource.Factory = NocturneDataSourceFactory(this)
         return ExoPlayer.Builder(this)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
             .build()
@@ -151,6 +149,23 @@ private fun PlayerScreen(player: ExoPlayer, session: PlaybackSession) {
     var glitchAt by remember { mutableLongStateOf(0L) }
     var nowTick by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
+    // A channel may carry several stream URLs (multi-server playlists).
+    // sourceIndex walks them: auto-advance on failure, manual cycle via SRC.
+    var sourceIndex by remember { mutableIntStateOf(0) }
+    var sources by remember { mutableStateOf(emptyList<String>()) }
+
+    fun playSource(target: Channel, index: Int) {
+        val list = target.allSources
+        val safe = index.coerceIn(0, (list.size - 1).coerceAtLeast(0))
+        sourceIndex = safe
+        failure = null
+        buffering = true
+        glitchAt = System.currentTimeMillis()
+        player.setMediaItem(Transports.mediaItem(list[safe]))
+        player.prepare()
+        player.play()
+    }
+
     LaunchedEffect(Unit) {
         while (true) {
             nowTick = System.currentTimeMillis()
@@ -160,12 +175,8 @@ private fun PlayerScreen(player: ExoPlayer, session: PlaybackSession) {
 
     LaunchedEffect(channel?.id) {
         val target = channel ?: return@LaunchedEffect
-        failure = null
-        buffering = true
-        glitchAt = System.currentTimeMillis()
-        player.setMediaItem(MediaItem.fromUri(Uri.parse(target.url)))
-        player.prepare()
-        player.play()
+        sources = target.allSources
+        playSource(target, 0)
         app.repository.markWatched(target.id)
     }
 
@@ -177,7 +188,14 @@ private fun PlayerScreen(player: ExoPlayer, session: PlaybackSession) {
 
             override fun onPlayerError(error: PlaybackException) {
                 buffering = false
-                failure = friendlyError(error)
+                val target = channel
+                val list = target?.allSources.orEmpty()
+                if (target != null && sourceIndex + 1 < list.size) {
+                    // Dead source — slip to the next one automatically, no drama.
+                    playSource(target, sourceIndex + 1)
+                } else {
+                    failure = friendlyError(error)
+                }
             }
         }
         player.addListener(listener)
@@ -197,12 +215,16 @@ private fun PlayerScreen(player: ExoPlayer, session: PlaybackSession) {
     }
 
     fun retry() {
-        val target = channel ?: return
-        failure = null
-        player.setMediaItem(MediaItem.fromUri(Uri.parse(target.url)))
-        player.prepare()
-        player.play()
+        channel?.let { playSource(it, sourceIndex) }
     }
+
+    fun cycleSource() {
+        val target = channel ?: return
+        if (sources.size < 2) return
+        playSource(target, (sourceIndex + 1) % sources.size)
+    }
+
+    val transportLabel = Transports.label(sources.getOrNull(sourceIndex) ?: channel?.url.orEmpty())
 
     Box(
         modifier = Modifier
@@ -252,9 +274,13 @@ private fun PlayerScreen(player: ExoPlayer, session: PlaybackSession) {
                 isFavorite = channel?.let { state.favorites.contains(it.id) } == true,
                 currentTitle = channel?.let { EpgLookup.current(state.epg, it, nowTick)?.title },
                 nextTitle = channel?.let { EpgLookup.next(state.epg, it, nowTick)?.title },
+                transportLabel = transportLabel,
+                sourceIndex = sourceIndex,
+                sourceCount = sources.size.coerceAtLeast(1),
                 onBack = { (context as? PlayerActivity)?.finish() },
                 onUp = { zap(-1) },
                 onDown = { zap(1) },
+                onCycleSource = { cycleSource() },
                 onToggleFavorite = { channel?.let { ch -> scope.launch { app.repository.toggleFavorite(ch.id) } } }
             )
         }
@@ -267,9 +293,13 @@ private fun ControlsOverlay(
     isFavorite: Boolean,
     currentTitle: String?,
     nextTitle: String?,
+    transportLabel: String,
+    sourceIndex: Int,
+    sourceCount: Int,
     onBack: () -> Unit,
     onUp: () -> Unit,
     onDown: () -> Unit,
+    onCycleSource: () -> Unit,
     onToggleFavorite: () -> Unit
 ) {
     val flicker = rememberFlicker(min = 0.9f, max = 1f, periodMs = 260)
@@ -309,6 +339,13 @@ private fun ControlsOverlay(
                     imageVector = if (isFavorite) Icons.Filled.Star else Icons.Filled.StarBorder,
                     contentDescription = "Favourite",
                     tint = if (isFavorite) NocturnePalette.Ember else NocturnePalette.Bone
+                )
+            }
+            TransportChip(label = transportLabel)
+            if (sourceCount > 1) {
+                SourceChip(
+                    label = "SRC ${sourceIndex + 1}/$sourceCount",
+                    onClick = onCycleSource
                 )
             }
         }
@@ -355,6 +392,39 @@ private fun ControlsOverlay(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun TransportChip(label: String) {
+    Surface(
+        color = Color.Black.copy(alpha = 0.5f),
+        shape = RoundedCornerShape(50),
+        border = BorderStroke(1.dp, NocturnePalette.Coffin)
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = NocturnePalette.Ash,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+        )
+    }
+}
+
+@Composable
+private fun SourceChip(label: String, onClick: () -> Unit) {
+    Surface(
+        color = Color.Black.copy(alpha = 0.5f),
+        shape = RoundedCornerShape(50),
+        border = BorderStroke(1.dp, NocturnePalette.Blood),
+        modifier = Modifier.clickable(onClick = onClick)
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = NocturnePalette.Ember,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+        )
     }
 }
 
@@ -477,5 +547,5 @@ private fun friendlyError(error: PlaybackException): String = when (error.errorC
     PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
     PlaybackException.ERROR_CODE_DECODING_FAILED ->
         "This device cannot decode the stream. The codec may be unsupported."
-    else -> error.message ?: "An unknown error snuffed the signal."
+    else -> error.message ?: error.cause?.message ?: "An unknown error snuffed the signal."
 }

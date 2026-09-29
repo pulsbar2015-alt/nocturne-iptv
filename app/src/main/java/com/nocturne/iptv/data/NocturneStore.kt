@@ -1,6 +1,7 @@
 package com.nocturne.iptv.data
 
 import android.content.Context
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
@@ -24,6 +25,7 @@ class NocturneStore(private val context: Context) {
         val RECENTS = stringPreferencesKey("recents")
         val EPG_URLS = stringPreferencesKey("epg_urls")
         val LAST_EPG = stringPreferencesKey("last_epg")
+        val DEFAULT_IMPORTED = booleanPreferencesKey("default_imported")
     }
 
     // ---- Playlists ------------------------------------------------------
@@ -109,4 +111,14 @@ class NocturneStore(private val context: Context) {
 
     suspend fun lastEpgUrl(): String? =
         context.dataStore.data.map { it[Keys.LAST_EPG] }.first()?.takeIf { it.isNotBlank() }
+
+    // ---- Default playlist -------------------------------------------------
+
+    /** True once the bundled default source has been pulled at least once. */
+    suspend fun defaultImported(): Boolean =
+        context.dataStore.data.map { it[Keys.DEFAULT_IMPORTED] ?: false }.first()
+
+    suspend fun markDefaultImported() {
+        context.dataStore.edit { it[Keys.DEFAULT_IMPORTED] = true }
+    }
 }

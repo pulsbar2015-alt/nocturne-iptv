@@ -8,11 +8,24 @@ data class Channel(
     val logo: String? = null,
     val group: String = UNGROUPED,
     val tvgId: String? = null,
-    val tvgName: String? = null
+    val tvgName: String? = null,
+    /**
+     * Alternate stream URLs for the same channel, gathered when the playlist
+     * lists the channel more than once (common with multi-server IPTV lists).
+     * [url] stays the primary; [sources] are ordered fallbacks.
+     */
+    val sources: List<String> = emptyList()
 ) {
     companion object {
         const val UNGROUPED = "Unsorted"
     }
+
+    /** Primary URL first, then alternates de-duplicated. */
+    val allSources: List<String>
+        get() = listOf(url) + sources.filter { it != url }
+
+    val hasAlternates: Boolean
+        get() = sources.isNotEmpty()
 }
 
 /** Metadata about an imported playlist source. */

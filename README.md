@@ -13,10 +13,19 @@ scanline-and-vignette player.
 - **Playlist import** — from a URL, a local file, or raw pasted text.
   Forgiving M3U parser handles `tvg-id`, `tvg-name`, `tvg-logo`, `group-title`,
   `#EXTGRP`, BOMs, and both quoted attribute styles.
+- **Default channels** — on first run the app pulls a bundled channel list so
+  the vault is never empty. Re-pull it any time with **Load default channels**.
 - **Formats** — HLS (`.m3u8`), MPEG-TS (`.ts`), DASH (`.mpd`), and progressive
-  (`.m3u`, `.mp4`) via Android Media3 / ExoPlayer.
+  (`.mp4`) via Android Media3 / ExoPlayer; RTMP via the media3 RTMP extension;
+  `tvbus` / `mitv` / `p8p` / `vjms` through pluggable bridges (see below).
 - **Browsing** — channel list with logos, group filters, search, favourites
-  ("Vault"), and recents ("Recent").
+  ("Vault"), and recents ("Recent"). Each row shows its transport
+  (`HLS`, `RTMP`, `TVBUS`…) and a source count when a channel has backups.
+- **Preview monitor** — a muted 16:9 mini-player pinned at the top of the
+  channel list, tuned to your last-watched channel. Tap it to go fullscreen.
+- **Multi-source channels** — when a playlist lists the same channel on
+  several servers, Nocturne folds them into one row. The player slips to the
+  next source automatically when one dies; the **SRC n/m** chip cycles manually.
 - **EPG** — load an XMLTV URL for now/next titles in the list and the player.
 - **Horror theme** — animated title-card intro, glitch text, flickering
   scanlines, film-grain noise, vignette, and a static-flash "dip" when you zap
@@ -38,10 +47,14 @@ app/src/main/java/com/nocturne/iptv/
 │   └── NocturneRepository.kt    State holder + import pipeline
 ├── player/
 │   ├── PlaybackSession.kt       Shared zap queue
-│   └── PlayerActivity.kt        ExoPlayer + horror controller UI
+│   ├── PlayerActivity.kt        ExoPlayer + horror controller UI
+│   └── source/
+│       ├── Transports.kt        Scheme labels + MediaItem hints
+│       ├── NativeBridges.kt     tvbus/mitv/p8p/vjms bridge registry
+│       └── NocturneDataSource.kt Scheme-routing DataSource factory
 └── ui/
     ├── NocturneViewModel.kt
-    ├── components/              ChannelRow, horror effects
+    ├── components/              ChannelRow, PreviewBar, horror effects
     ├── screens/                 Home, AddPlaylist, Settings, Intro
     └── theme/                   Palette, typography, Material theme
 ```
@@ -95,8 +108,23 @@ keystore and a `release` signing config.
   `res/xml/network_security_config.xml`.
 - Streams that are dead, geo-blocked, or use unsupported codecs will show a
   themed error card with a retry action.
+- When a channel has several sources, the player tries them in order before
+  giving up — the **SRC n/m** chip shows where you are.
 - Pasted playlists are held in memory; re-import them to reload after a restart.
   URL and file sources are re-fetched on demand.
+
+## Proprietary transports (`tvbus` / `mitv` / `p8p` / `vjms`)
+
+These schemes belong to their vendors, so stock ExoPlayer cannot play them.
+Nocturne routes every one of them through `player/source/NativeBridges.kt`:
+
+- `rtmp://` works today via the bundled media3 RTMP extension.
+- Until a vendor SDK is bundled, each exotic scheme fails fast with a card
+  that names the missing SDK instead of a cryptic error.
+- Got an SDK? Its usual shape is a tiny HTTP proxy on `127.0.0.1`. Subclass
+  `ProxyRewriteBridge` with the proxy port, then call
+  `NativeBridges.register(…)` once at startup — the player picks it up with
+  zero changes to playback code.
 
 ## Tech
 

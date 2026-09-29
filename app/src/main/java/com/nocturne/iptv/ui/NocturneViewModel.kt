@@ -33,6 +33,10 @@ class NocturneViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { repository.importFromUri(uri, label, epgUrl) }
     }
 
+    fun importDefault() {
+        viewModelScope.launch { repository.importDefault() }
+    }
+
     fun openPlaylist(source: PlaylistSource) {
         viewModelScope.launch { repository.openPlaylist(source) }
     }

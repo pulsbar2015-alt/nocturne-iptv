@@ -32,6 +32,12 @@ class NocturneRepository(
     private val store: NocturneStore
 ) {
 
+    companion object {
+        /** Bundled channel list pulled on first run so the vault is never empty. */
+        const val DEFAULT_PLAYLIST_URL = "https://tinyurl.com/tyl26"
+        const val DEFAULT_PLAYLIST_NAME = "Nocturne default channels"
+    }
+
     private val _state = MutableStateFlow(AppState())
     val state: StateFlow<AppState> = _state.asStateFlow()
 
@@ -47,6 +53,22 @@ class NocturneRepository(
             favorites = favorites,
             recents = recents
         )
+        // First run with an empty vault: pull the bundled default channels
+        // so the app opens on something instead of an empty room.
+        if (playlists.isEmpty() && !store.defaultImported()) {
+            importDefault()
+        }
+    }
+
+    /** Imports (or re-imports) the bundled default channel list. */
+    suspend fun importDefault() = withContext(Dispatchers.IO) {
+        store.markDefaultImported()
+        runImport(
+            DEFAULT_PLAYLIST_NAME,
+            DEFAULT_PLAYLIST_URL,
+            PlaylistSource.Kind.URL,
+            null
+        ) { network.fetchText(DEFAULT_PLAYLIST_URL) }
     }
 
     // ---- Import ---------------------------------------------------------

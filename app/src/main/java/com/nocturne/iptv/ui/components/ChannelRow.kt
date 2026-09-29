@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.nocturne.iptv.data.Channel
 import com.nocturne.iptv.data.EpgProgram
+import com.nocturne.iptv.player.source.Transports
 import com.nocturne.iptv.ui.theme.NocturnePalette
 
 /**
@@ -79,6 +80,26 @@ fun ChannelRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                Spacer(Modifier.height(2.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = Transports.label(channel.url),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = NocturnePalette.Ash,
+                        maxLines = 1
+                    )
+                    if (channel.hasAlternates) {
+                        Text(
+                            text = "· ${channel.allSources.size} SRC",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = NocturnePalette.Ember,
+                            maxLines = 1
+                        )
+                    }
+                }
             }
 
             Spacer(Modifier.width(8.dp))

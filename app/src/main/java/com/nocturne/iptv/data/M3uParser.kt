@@ -90,10 +90,41 @@ object M3uParser {
 
         return ParsedPlaylist(
             name = playlistName,
-            channels = channels,
+            // Same channel listed once per server becomes one channel with alternates.
+            channels = mergeSources(channels),
             groups = groups.toList()
         )
     }
+
+    /**
+     * Folds duplicate entries for the same channel into a single [Channel]
+     * whose [Channel.sources] hold the extra URLs, preserving playlist order
+     * and the first entry's metadata (logo, group). Identity is the `tvg-id`
+     * when present, otherwise name-within-group — both are how providers
+     * signal "the same channel on a different server".
+     */
+    private fun mergeSources(channels: List<Channel>): List<Channel> {
+        val firstByKey = LinkedHashMap<String, Channel>()
+        val urlsByKey = LinkedHashMap<String, MutableList<String>>()
+        for (channel in channels) {
+            val key = mergeKey(channel)
+            urlsByKey.getOrPut(key) { ArrayList() }.add(channel.url)
+            firstByKey.putIfAbsent(key, channel)
+        }
+        return firstByKey.values.mapIndexed { index, channel ->
+            val extras = (urlsByKey[mergeKey(channel)] ?: emptyList())
+                .distinct()
+                .filter { it != channel.url }
+            channel.copy(
+                id = "$index-${channel.url}",
+                sources = extras
+            )
+        }
+    }
+
+    private fun mergeKey(channel: Channel): String =
+        channel.tvgId?.takeIf { it.isNotBlank() }?.lowercase(Locale.ROOT)
+            ?: "${channel.group}|${channel.name.trim().lowercase(Locale.ROOT)}"
 
     /** Everything after the final comma of an #EXTINF line is the display title. */
     private fun displayName(line: String): String? {
