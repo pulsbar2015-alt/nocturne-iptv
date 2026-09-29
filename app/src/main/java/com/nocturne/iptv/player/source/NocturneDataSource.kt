@@ -7,7 +7,7 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
-import androidx.media3.exoplayer.rtmp.RtmpDataSource
+import androidx.media3.datasource.rtmp.RtmpDataSource
 import com.nocturne.iptv.data.NetworkClient
 
 /**
